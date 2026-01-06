@@ -13,11 +13,15 @@ Usage:
 import json
 import os
 import time
+from datetime import datetime
 import requests
 from azure.identity import DefaultAzureCredential
 
 # Configuration - set these environment variables before running
 ENDPOINT = os.environ.get("AZURE_CU_ENDPOINT", "https://<your-resource>.services.ai.azure.com")
+
+# Token cache to avoid repeated auth calls
+_token_cache = {"token": None, "expires": 0}
 ANALYZER_ID = os.environ.get("AZURE_CU_ANALYZER_ID", "prebuilt-invoice")
 API_VERSION = "2025-11-01"
 PDF_URL = os.environ.get("DOCUMENT_URL", "https://<your-storage>.blob.core.windows.net/container/document.pdf")
@@ -25,9 +29,16 @@ PAGE_RANGE = os.environ.get("PAGE_RANGE", "1-")  # Defaults to all pages
 
 
 def get_token():
-    """Get Azure AD token for authentication."""
+    """Get Azure AD token (cached for 50 minutes)."""
+    now = time.time()
+    if _token_cache["token"] and now < _token_cache["expires"]:
+        return _token_cache["token"]
+    
     credential = DefaultAzureCredential()
-    return credential.get_token("https://cognitiveservices.azure.com/.default").token
+    token_response = credential.get_token("https://cognitiveservices.azure.com/.default")
+    _token_cache["token"] = token_response.token
+    _token_cache["expires"] = now + 3000  # Cache for ~50 minutes
+    return token_response.token
 
 
 def start_analysis(token: str) -> str:
@@ -43,6 +54,8 @@ def start_analysis(token: str) -> str:
     request_id = resp.headers.get("x-ms-request-id") or resp.headers.get("apim-request-id")
     if request_id:
         print(f"Request ID: {request_id}")
+        with open("requests.txt", "a") as f:
+            f.write(f"{request_id}\n")
 
     # Long-running operation - result location returned in header
     op_url = resp.headers.get("Operation-Location")
@@ -53,14 +66,16 @@ def start_analysis(token: str) -> str:
 
 def poll_until_done(op_url: str) -> dict:
     """Poll operation URL until Succeeded, Failed, or Canceled."""
+    start_time = time.time()
     while True:
-        token = get_token()  # Refresh token on each poll to handle long operations
+        token = get_token()
         resp = requests.get(op_url, headers={"Authorization": f"Bearer {token}"})
         resp.raise_for_status()
         data = resp.json()
 
         status = data.get("status")  # Running, Succeeded, Failed, or Canceled
-        print(f"Status: {status}")
+        elapsed = int(time.time() - start_time)
+        print(f"Status: {status} ({elapsed}s elapsed)")
 
         if status == "Succeeded":
             return data.get("result", data)
