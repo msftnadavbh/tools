@@ -115,7 +115,7 @@ def main():
         fields = first_content.get("fields", {})
         
         if fields:
-            print(f"\n📊 Extracted {len(fields)} field(s):")
+            print(f"\nExtracted {len(fields)} field(s):")
             print("-" * 60)
             for field_name, field_value in fields.items():
                 field_type = field_value.get("type", "unknown")
@@ -133,7 +133,7 @@ def main():
                 else:
                     print(f"  {field_name}: ({field_type})")
         else:
-            print("\n⚠️  No fields extracted from document!")
+            print("\nNo fields extracted from document!")
             print("   This can happen if:")
             print("   - The document format doesn't match the analyzer type")
             print("   - The document quality is too low for extraction")
@@ -143,13 +143,13 @@ def main():
             
             # Check if we have grounding/OCR content without fields
             if first_content.get("markdown") or first_content.get("text"):
-                print("\n   ✓ Grounding content (OCR/text) IS present")
-                print("   → The document was read, but field extraction failed")
+                print("\n   Grounding content (OCR/text) IS present")
+                print("   The document was read, but field extraction failed")
             
             # Show what keys are present in the content for debugging
             print(f"\n   Available content keys: {list(first_content.keys())}")
     else:
-        print("\n⚠️  No content items returned!")
+        print("\nNo content items returned!")
         print("   Check if the document URL is accessible and the format is supported.")
 
 
