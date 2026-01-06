@@ -65,7 +65,10 @@ def start_analysis(token: str) -> str:
 
 
 def poll_until_done(op_url: str) -> dict:
-    """Poll operation URL until Succeeded, Failed, or Canceled."""
+    """Poll operation URL until Succeeded, Failed, or Canceled.
+    
+    Returns the full response with 'result' key preserved for proper field access.
+    """
     start_time = time.time()
     while True:
         token = get_token()
@@ -78,7 +81,8 @@ def poll_until_done(op_url: str) -> dict:
         print(f"Status: {status} ({elapsed}s elapsed)")
 
         if status == "Succeeded":
-            return data.get("result", data)
+            # Return full data structure - result is accessed via data["result"]
+            return data
         if status in ("Failed", "Canceled"):
             raise RuntimeError(f"Analysis {status}: {json.dumps(data.get('error', data), indent=2)}")
 
@@ -91,14 +95,62 @@ def main():
     op_url = start_analysis(token)
 
     print("Polling for results...")
-    result = poll_until_done(op_url)
+    analysis_result = poll_until_done(op_url)
 
-    # Save results
+    # Save full results
     with open("cu_result.json", "w") as f:
-        json.dump(result, f, indent=2)
+        json.dump(analysis_result, f, indent=2)
 
     print(f"Done! Saved to cu_result.json")
-    print(f"Extracted {len(result.get('contents', []))} content item(s)")
+    
+    # Extract and display results with proper structure handling
+    # The result structure is: analysis_result["result"]["contents"][n]["fields"]
+    result = analysis_result.get("result", analysis_result)
+    contents = result.get("contents", [])
+    
+    print(f"Extracted {len(contents)} content item(s)")
+    
+    if contents:
+        first_content = contents[0]
+        fields = first_content.get("fields", {})
+        
+        if fields:
+            print(f"\n📊 Extracted {len(fields)} field(s):")
+            print("-" * 60)
+            for field_name, field_value in fields.items():
+                field_type = field_value.get("type", "unknown")
+                if field_type == "string":
+                    print(f"  {field_name}: {field_value.get('valueString')}")
+                elif field_type == "number":
+                    print(f"  {field_name}: {field_value.get('valueNumber')}")
+                elif field_type == "date":
+                    print(f"  {field_name}: {field_value.get('valueDate')}")
+                elif field_type == "array":
+                    arr = field_value.get('valueArray', [])
+                    print(f"  {field_name}: [{len(arr)} items]")
+                elif field_type == "object":
+                    print(f"  {field_name}: [object]")
+                else:
+                    print(f"  {field_name}: ({field_type})")
+        else:
+            print("\n⚠️  No fields extracted from document!")
+            print("   This can happen if:")
+            print("   - The document format doesn't match the analyzer type")
+            print("   - The document quality is too low for extraction")
+            print("   - The analyzer requires configuration (for custom analyzers)")
+            print(f"\n   Content 'kind': {first_content.get('kind')}")
+            print(f"   Pages: {first_content.get('startPageNumber')} - {first_content.get('endPageNumber')}")
+            
+            # Check if we have grounding/OCR content without fields
+            if first_content.get("markdown") or first_content.get("text"):
+                print("\n   ✓ Grounding content (OCR/text) IS present")
+                print("   → The document was read, but field extraction failed")
+            
+            # Show what keys are present in the content for debugging
+            print(f"\n   Available content keys: {list(first_content.keys())}")
+    else:
+        print("\n⚠️  No content items returned!")
+        print("   Check if the document URL is accessible and the format is supported.")
 
 
 if __name__ == "__main__":
