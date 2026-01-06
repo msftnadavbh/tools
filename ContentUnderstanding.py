@@ -39,6 +39,11 @@ def start_analysis(token: str) -> str:
     resp = requests.post(url, headers=headers, json=payload)
     resp.raise_for_status()
 
+    # Track request for debugging/support
+    request_id = resp.headers.get("x-ms-request-id") or resp.headers.get("apim-request-id")
+    if request_id:
+        print(f"Request ID: {request_id}")
+
     # Long-running operation - result location returned in header
     op_url = resp.headers.get("Operation-Location")
     if not op_url:
